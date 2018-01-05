@@ -1,12 +1,14 @@
 package main
 
 import (
+	"database/sql"
 	"log"
 	"net"
 	"sync"
 
 	"github.com/dustin/go-nntp"
 	"github.com/dustin/go-nntp/server"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func maybefatal(err error, f string, a ...interface{}) {
@@ -15,36 +17,36 @@ func maybefatal(err error, f string, a ...interface{}) {
 	}
 }
 
-type githubBackend struct {
+type SQLBackend struct {
 	groups    map[string]*nntp.Group
 	grouplock sync.Mutex
 }
 
-func (gb *githubBackend) AllowPost() bool {
+func (sb *SQLBackend) AllowPost() bool {
 	return true
 }
 
-func (gb *githubBackend) Authenticate(user, pass string) (nntpserver.Backend, error) {
+func (sb *SQLBackend) Authenticate(user, pass string) (nntpserver.Backend, error) {
 	return nil, nntpserver.ErrAuthRejected
 }
 
-func (gb *githubBackend) Authorized() bool {
+func (sb *SQLBackend) Authorized() bool {
 	return true
 }
 
-func (gb *githubBackend) GetArticle(group *nntp.Group, id string) (*nntp.Article, error) {
+func (sb *SQLBackend) GetArticle(group *nntp.Group, id string) (*nntp.Article, error) {
 	return nil, nil
 }
 
-func (gb *githubBackend) GetArticles(group *nntp.Group, from, to int64) ([]nntpserver.NumberedArticle, error) {
+func (sb *SQLBackend) GetArticles(group *nntp.Group, from, to int64) ([]nntpserver.NumberedArticle, error) {
 	return nil, nil
 }
 
-func (gb *githubBackend) GetGroup(name string) (*nntp.Group, error) {
+func (sb *SQLBackend) GetGroup(name string) (*nntp.Group, error) {
 	return nil, nil
 }
 
-func (gb *githubBackend) ListGroups(max int) ([]*nntp.Group, error) {
+func (sb *SQLBackend) ListGroups(max int) ([]*nntp.Group, error) {
 	rv := make([]*nntp.Group, 0, 0)
 	rv = append(rv, &nntp.Group{
 		Name:        "rec.games.awesome",
@@ -57,12 +59,12 @@ func (gb *githubBackend) ListGroups(max int) ([]*nntp.Group, error) {
 	return rv, nil
 }
 
-func (gb *githubBackend) Post(art *nntp.Article) error {
+func (sb *SQLBackend) Post(art *nntp.Article) error {
 	return nil
 }
 
 func main() {
-	backend := githubBackend{}
+	backend := SQLBackend{}
 
 	a, err := net.ResolveTCPAddr("tcp", ":1119")
 	maybefatal(err, "Error resolving listener: %v", err)
