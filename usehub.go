@@ -18,6 +18,7 @@ func maybefatal(err error, f string, a ...interface{}) {
 }
 
 type SQLBackend struct {
+	db        *sql.DB
 	groups    map[string]*nntp.Group
 	grouplock sync.Mutex
 }
@@ -64,7 +65,13 @@ func (sb *SQLBackend) Post(art *nntp.Article) error {
 }
 
 func main() {
-	backend := SQLBackend{}
+	db, err := sql.Open("sqlite3", "./usehub.db")
+	maybefatal(err, "Error connecting to database", err)
+	defer db.Close()
+
+	backend := SQLBackend{
+		db: db,
+	}
 
 	a, err := net.ResolveTCPAddr("tcp", ":1119")
 	maybefatal(err, "Error resolving listener: %v", err)
