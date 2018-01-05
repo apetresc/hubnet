@@ -54,7 +54,7 @@ func (sb *SQLBackend) ListGroups(max int) ([]*nntp.Group, error) {
 		Count:       2,
 		Low:         2,
 		High:        3,
-		Posting:     nntp.PostingPermitted,
+		Posting:     nntp.PostingNotPermitted,
 	})
 	return rv, nil
 }
