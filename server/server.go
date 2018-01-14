@@ -40,11 +40,20 @@ func (sb *SQLBackend) GetArticle(group *nntp.Group, id string) (*nntp.Article, e
 }
 
 func (sb *SQLBackend) GetArticles(group *nntp.Group, from, to int64) ([]nntpserver.NumberedArticle, error) {
-	return nil, nil
+	rv := make([]nntpserver.NumberedArticle, 0, 0)
+	rv = append(rv, nntpserver.NumberedArticle{})
+	return rv, nil
 }
 
 func (sb *SQLBackend) GetGroup(name string) (*nntp.Group, error) {
-	return nil, nil
+	return &nntp.Group{
+		Name:        "rec.games.awesome",
+		Description: "A cool test server",
+		Count:       2,
+		Low:         2,
+		High:        3,
+		Posting:     nntp.PostingNotPermitted,
+	}, nil
 }
 
 func (sb *SQLBackend) ListGroups(max int) ([]*nntp.Group, error) {
@@ -65,6 +74,7 @@ func (sb *SQLBackend) Post(art *nntp.Article) error {
 }
 
 func main() {
+	log.Printf("Starting up Usehub...")
 	db, err := sql.Open("sqlite3", "./usehub.db")
 	maybefatal(err, "Error connecting to database", err)
 	defer db.Close()
