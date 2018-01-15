@@ -1,30 +1,21 @@
-package main
+package backend
 
 import (
 	"database/sql"
-	"log"
-	"net"
 	"sync"
 
-	"github.com/dustin/go-nntp"
+	nntp "github.com/dustin/go-nntp"
 	"github.com/dustin/go-nntp/server"
-	_ "github.com/mattn/go-sqlite3"
 )
 
-func maybefatal(err error, f string, a ...interface{}) {
-	if err != nil {
-		log.Fatalf(f, a...)
-	}
-}
-
 type SQLBackend struct {
-	db        *sql.DB
-	groups    map[string]*nntp.Group
-	grouplock sync.Mutex
+	DB        *sql.DB
+	Groups    map[string]*nntp.Group
+	Grouplock sync.Mutex
 }
 
 func (sb *SQLBackend) AllowPost() bool {
-	return true
+	return false
 }
 
 func (sb *SQLBackend) Authenticate(user, pass string) (nntpserver.Backend, error) {
@@ -71,29 +62,4 @@ func (sb *SQLBackend) ListGroups(max int) ([]*nntp.Group, error) {
 
 func (sb *SQLBackend) Post(art *nntp.Article) error {
 	return nil
-}
-
-func main() {
-	log.Printf("Starting up Usehub...")
-	db, err := sql.Open("sqlite3", "./usehub.db")
-	maybefatal(err, "Error connecting to database", err)
-	defer db.Close()
-
-	backend := SQLBackend{
-		db: db,
-	}
-
-	a, err := net.ResolveTCPAddr("tcp", ":1119")
-	maybefatal(err, "Error resolving listener: %v", err)
-	l, err := net.ListenTCP("tcp", a)
-	maybefatal(err, "Error setting up listener: %v", err)
-	defer l.Close()
-
-	s := nntpserver.NewServer(&backend)
-
-	for {
-		c, err := l.AcceptTCP()
-		maybefatal(err, "Error accepting connection: %v", err)
-		go s.Process(c)
-	}
 }
