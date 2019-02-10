@@ -13,6 +13,7 @@ import (
 	"github.com/bradleyfalzon/ghinstallation"
 	"github.com/google/go-github/github"
 	_ "github.com/mattn/go-sqlite3"
+	"launchpad.net/go-xdg"
 )
 
 func addRepository(sb *backend.SQLBackend, repo *github.Repository) error {
@@ -48,7 +49,7 @@ func main() {
 	args := os.Args[1:]
 	keyPath, _ := filepath.Abs(args[0])
 
-	db, err := sql.Open("sqlite3", "./usehub.db")
+	db, err := sql.Open("sqlite3", filepath.Join(xdg.Data.Home(), "usehub", "usehub.db"))
 	if err != nil {
 		log.Fatal(err)
 	}
