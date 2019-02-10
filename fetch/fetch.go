@@ -12,7 +12,7 @@ import (
 	"github.com/apetresc/usehub/backend"
 	"github.com/bradleyfalzon/ghinstallation"
 	"github.com/google/go-github/github"
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/mattn/go-sqlite3"
 	"launchpad.net/go-xdg"
 )
 
@@ -33,7 +33,11 @@ func addRepository(sb *backend.SQLBackend, repo *github.Repository) error {
 			groupType,
 			fmt.Sprintf("github.%s.%s.%s", groupType, repo.GetOwner().GetLogin(), repo.GetName()))
 		if err != nil {
-			return err
+			if sqlerr, ok := err.(sqlite3.Error); ok && sqlerr.ExtendedCode == 1555 {
+				log.Printf("Skipping over %s, already exists...\n", repo.GetFullName())
+			} else {
+				return err
+			}
 		}
 	}
 
