@@ -6,16 +6,18 @@ import (
 	"log"
 )
 
-const create_groups_query = `
+const createGroupsQuery = `
   CREATE TABLE IF NOT EXISTS groups (
-		id integer not null primary key,
+		id integer not null,
 		name text,
-		description text)
-	;
+		type text,
+		description text,
+		primary key (id, type)
+	);
 `
 
 func EnsureViews(db *sql.DB) error {
-	_, errg := db.Exec(create_groups_query)
+	_, errg := db.Exec(createGroupsQuery)
 	if errg != nil {
 		log.Printf("Error creating groups view: %v\n", errg)
 	}

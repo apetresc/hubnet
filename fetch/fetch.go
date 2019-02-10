@@ -20,7 +20,7 @@ func addRepository(sb *backend.SQLBackend, repo *github.Repository) error {
 	if err != nil {
 		return err
 	}
-	stmt, err := tx.Prepare("INSERT INTO groups(id, name) VALUES(?, ?)")
+	stmt, err := tx.Prepare("INSERT INTO groups(id, type, name) VALUES(?, ?, ?)")
 	if err != nil {
 		return err
 	}
@@ -29,13 +29,17 @@ func addRepository(sb *backend.SQLBackend, repo *github.Repository) error {
 	for _, groupType := range [2]string{"prs", "issues"} {
 		_, err = stmt.Exec(
 			repo.GetID(),
+			groupType,
 			fmt.Sprintf("github.%s.%s.%s", groupType, repo.GetOwner().GetLogin(), repo.GetName()))
 		if err != nil {
 			return err
 		}
 	}
 
-	tx.Commit()
+	err = tx.Commit()
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -43,7 +47,6 @@ func addRepository(sb *backend.SQLBackend, repo *github.Repository) error {
 func main() {
 	args := os.Args[1:]
 	keyPath, _ := filepath.Abs(args[0])
-	fmt.Printf("keyPath is %s\n", keyPath)
 
 	db, err := sql.Open("sqlite3", "./usehub.db")
 	if err != nil {
@@ -77,7 +80,10 @@ func main() {
 		}
 		for _, repo := range repos {
 			fmt.Printf("%s\n", repo)
-			addRepository(&backend, repo)
+			err = addRepository(&backend, repo)
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
 		if resp.NextPage == 0 {
 			break
