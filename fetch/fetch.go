@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -57,18 +58,7 @@ func addRepository(sb *backend.SQLBackend, repo repository) error {
 	return nil
 }
 
-func main() {
-	db, err := sql.Open("sqlite3", "./hubnet.db")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer db.Close()
-
-	backend.EnsureViews(db)
-	backend := backend.SQLBackend{
-		DB: db,
-	}
-
+func fetchAllGroups(sb *backend.SQLBackend) error {
 	src := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: os.Getenv("GITHUB_TOKEN")})
 	client := githubv4.NewClient(oauth2.NewClient(context.Background(), src))
 
@@ -90,7 +80,7 @@ func main() {
 	}
 	var allRepos []repository
 	for {
-		err = client.Query(context.Background(), &q, variables)
+		err := client.Query(context.Background(), &q, variables)
 		if err != nil {
 			// Handle error
 			fmt.Println(err)
@@ -98,7 +88,7 @@ func main() {
 		for _, repo := range q.Viewer.Repositories.Nodes {
 			fmt.Println("        Repo:", repo.NameWithOwner)
 			fmt.Println("        Issues:", repo.HasIssuesEnabled)
-			addRepository(&backend, repo)
+			addRepository(sb, repo)
 		}
 		allRepos = append(allRepos, q.Viewer.Repositories.Nodes...)
 		if !q.Viewer.Repositories.PageInfo.HasNextPage {
@@ -107,4 +97,61 @@ func main() {
 		variables["commentsCursor"] = githubv4.NewString(q.Viewer.Repositories.PageInfo.EndCursor)
 	}
 	fmt.Println("Total # of repos:", len(allRepos))
+
+	return nil
+}
+
+func fetchRepo(sb *backend.SQLBackend, repoName string) error {
+	var strs = strings.SplitN(repoName, "/", 2)
+	var owner = strs[0]
+	var name = strs[1]
+	src := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: os.Getenv("GITHUB_TOKEN")})
+	client := githubv4.NewClient(oauth2.NewClient(context.Background(), src))
+
+	var q struct {
+		Repository struct {
+			Id string
+		} `graphql:"repository(owner:$owner, name:$name)"`
+	}
+	variables := map[string]interface{}{
+		"owner": owner,
+		"name":  name,
+	}
+
+	for {
+		err := client.Query(context.Background(), &q, variables)
+		if err != nil {
+			fmt.Println("Errorrr: ", err)
+			return err
+		}
+		fmt.Println("Repo:", q.Repository.Id)
+
+		break
+	}
+
+	return nil
+}
+
+func main() {
+	var repo = flag.String("repo", "", "repo to fetch")
+	flag.Parse()
+
+	db, err := sql.Open("sqlite3", "./hubnet.db")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+
+	backend.EnsureViews(db)
+	backend := backend.SQLBackend{
+		DB: db,
+	}
+
+	if *repo == "" {
+		if err = fetchAllGroups(&backend); err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		fetchRepo(&backend, *repo)
+	}
 }
