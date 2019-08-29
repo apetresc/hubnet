@@ -5,7 +5,7 @@ import (
 	"log"
 	"net"
 
-	"github.com/apetresc/usehub/backend"
+	"github.com/apetresc/hubnet/backend"
 	"github.com/dustin/go-nntp/server"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -17,9 +17,9 @@ func maybefatal(err error, f string, a ...interface{}) {
 }
 
 func main() {
-	log.Printf("Starting up UseHub...")
-	db, err := sql.Open("sqlite3", "./usehub.db")
-	maybefatal(err, "Error connecting to database", err)
+	log.Printf("Starting up Hubnet...")
+	db, err := sql.Open("sqlite3", "./hubnet.db")
+	maybefatal(err, "Error connecting to database: %s", err)
 	defer db.Close()
 
 	backend.EnsureViews(db)

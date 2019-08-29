@@ -9,7 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/apetresc/usehub/backend"
+	"github.com/apetresc/hubnet/backend"
 	"github.com/bradleyfalzon/ghinstallation"
 	"github.com/google/go-github/github"
 	"github.com/mattn/go-sqlite3"
@@ -53,7 +53,7 @@ func main() {
 	args := os.Args[1:]
 	keyPath, _ := filepath.Abs(args[0])
 
-	db, err := sql.Open("sqlite3", filepath.Join(xdg.Data.Home(), "usehub", "usehub.db"))
+	db, err := sql.Open("sqlite3", filepath.Join(xdg.Data.Home(), "hubnet", "hubnet.db"))
 	if err != nil {
 		log.Fatal(err)
 	}
