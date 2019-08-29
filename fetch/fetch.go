@@ -5,18 +5,26 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"net/http"
 	"os"
-	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/apetresc/hubnet/backend"
-	"github.com/bradleyfalzon/ghinstallation"
-	"github.com/google/go-github/github"
 	"github.com/mattn/go-sqlite3"
-	"launchpad.net/go-xdg"
+	"github.com/shurcooL/githubv4"
+	"golang.org/x/oauth2"
 )
 
-func addRepository(sb *backend.SQLBackend, repo *github.Repository) error {
+type repository struct {
+	Id               string
+	NameWithOwner    string
+	HasIssuesEnabled bool
+}
+
+func addRepository(sb *backend.SQLBackend, repo repository) error {
+	strs := strings.SplitN(repo.NameWithOwner, "/", 2)
+	owner := strs[0]
+	name := strs[1]
 	tx, err := sb.DB.Begin()
 	if err != nil {
 		return err
@@ -29,12 +37,12 @@ func addRepository(sb *backend.SQLBackend, repo *github.Repository) error {
 
 	for _, groupType := range [2]string{"prs", "issues"} {
 		_, err = stmt.Exec(
-			repo.GetID(),
+			repo.Id,
 			groupType,
-			fmt.Sprintf("github.%s.%s.%s", groupType, repo.GetOwner().GetLogin(), repo.GetName()))
+			fmt.Sprintf("github.%s.%s.%s", groupType, owner, name))
 		if err != nil {
 			if sqlerr, ok := err.(sqlite3.Error); ok && sqlerr.ExtendedCode == 1555 {
-				log.Printf("Skipping over %s, already exists...\n", repo.GetFullName())
+				log.Printf("Skipping over %s, already exists...\n", repo.NameWithOwner)
 			} else {
 				return err
 			}
@@ -50,10 +58,7 @@ func addRepository(sb *backend.SQLBackend, repo *github.Repository) error {
 }
 
 func main() {
-	args := os.Args[1:]
-	keyPath, _ := filepath.Abs(args[0])
-
-	db, err := sql.Open("sqlite3", filepath.Join(xdg.Data.Home(), "hubnet", "hubnet.db"))
+	db, err := sql.Open("sqlite3", "./hubnet.db")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -64,36 +69,42 @@ func main() {
 		DB: db,
 	}
 
-	ctx := context.Background()
-	itr, err := ghinstallation.NewKeyFromFile(http.DefaultTransport, 7898, 80268, keyPath)
+	src := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: os.Getenv("GITHUB_TOKEN")})
+	client := githubv4.NewClient(oauth2.NewClient(context.Background(), src))
 
-	if err != nil {
-		log.Fatal(err)
+	var q struct {
+		Viewer struct {
+			Login        string
+			CreatedAt    time.Time
+			Repositories struct {
+				Nodes    []repository
+				PageInfo struct {
+					EndCursor   githubv4.String
+					HasNextPage bool
+				}
+			} `graphql:"repositories(first:100, after:$commentsCursor)"`
+		}
 	}
-
-	client := github.NewClient(&http.Client{Transport: itr})
-
-	opt := &github.RepositoryListOptions{
-		Visibility:  "all",
-		Affiliation: "owner,collaborator,organization_member",
-		ListOptions: github.ListOptions{PerPage: 100},
+	variables := map[string]interface{}{
+		"commentsCursor": (*githubv4.String)(nil),
 	}
+	var allRepos []repository
 	for {
-		repos, resp, err := client.Repositories.List(ctx, "apetresc", opt)
+		err = client.Query(context.Background(), &q, variables)
 		if err != nil {
-			log.Fatal(err)
+			// Handle error
+			fmt.Println(err)
 		}
-		for _, repo := range repos {
-			fmt.Printf("%s\n", repo)
-			err = addRepository(&backend, repo)
-			if err != nil {
-				log.Fatal(err)
-			}
+		for _, repo := range q.Viewer.Repositories.Nodes {
+			fmt.Println("        Repo:", repo.NameWithOwner)
+			fmt.Println("        Issues:", repo.HasIssuesEnabled)
+			addRepository(&backend, repo)
 		}
-		if resp.NextPage == 0 {
+		allRepos = append(allRepos, q.Viewer.Repositories.Nodes...)
+		if !q.Viewer.Repositories.PageInfo.HasNextPage {
 			break
 		}
-		opt.Page = resp.NextPage
+		variables["commentsCursor"] = githubv4.NewString(q.Viewer.Repositories.PageInfo.EndCursor)
 	}
-
+	fmt.Println("Total # of repos:", len(allRepos))
 }
