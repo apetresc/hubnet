@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"net/textproto"
+	"strings"
 	"sync"
 
 	nntp "github.com/dustin/go-nntp"
@@ -34,7 +36,32 @@ func (sb *SQLBackend) GetArticle(group *nntp.Group, id string) (*nntp.Article, e
 
 func (sb *SQLBackend) GetArticles(group *nntp.Group, from, to int64) ([]nntpserver.NumberedArticle, error) {
 	rv := make([]nntpserver.NumberedArticle, 0, 0)
-	//rv = append(rv, nntpserver.NumberedArticle{})
+	rows, err := sb.DB.Query("SELECT id, messageid, subject, author, date, refs FROM articles")
+	defer rows.Close()
+
+	if err != nil {
+		log.Fatalf("Error listing articles: %v", err)
+	}
+	for rows.Next() {
+		var messageid, subject, author, refs string
+		var id, date int64
+		if err := rows.Scan(&id, &messageid, &author, &date, &refs); err != nil {
+			log.Fatal(err)
+		}
+		headers := new(textproto.MIMEHeader)
+		headers.Add("Message-Id", messageid)
+		headers.Add("From", author)
+		headers.Add("Subject", subject)
+		rv = append(rv, nntpserver.NumberedArticle{
+			Num: id,
+			Article: &nntp.Article{
+				Header: *headers,
+				Body:   strings.NewReader(""),
+				Bytes:  0,
+				Lines:  0,
+			},
+		})
+	}
 	return rv, nil
 }
 
