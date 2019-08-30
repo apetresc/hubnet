@@ -16,13 +16,45 @@ import (
 	"golang.org/x/oauth2"
 )
 
-type repository struct {
+type Repository struct {
 	Id               string
 	NameWithOwner    string
 	HasIssuesEnabled bool
 }
 
-func addRepository(sb *backend.SQLBackend, repo repository) error {
+type PageInfo struct {
+	EndCursor   string
+	HasNextPage bool
+}
+
+type Author struct {
+	Login string
+}
+
+type Issue struct {
+	Id       string
+	Author   Author
+	Title    string
+	BodyText string
+}
+
+type PullRequest struct {
+	Id       string
+	Author   Author
+	Title    string
+	BodyText string
+	Comments struct {
+		Nodes    []Comment
+		PageInfo PageInfo
+	} `graphql:"comments(first:100, after:$pullRequestCommentsCursor)"`
+}
+
+type Comment struct {
+	BodyText string
+	Author   Author
+}
+
+func addRepository(sb *backend.SQLBackend, repo Repository) error {
 	strs := strings.SplitN(repo.NameWithOwner, "/", 2)
 	owner := strs[0]
 	name := strs[1]
@@ -58,6 +90,34 @@ func addRepository(sb *backend.SQLBackend, repo repository) error {
 	return nil
 }
 
+func addIssueArticle(sb *backend.SQLBackend, issue Issue) error {
+	tx, err := sb.DB.Begin()
+	if err != nil {
+		return err
+	}
+	stmt, err := tx.Prepare("INSERT INTO articles(messageid, author, subject, date, refs) VALUES(?, ?, ?, ?, ?)")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	_, err = stmt.Exec(issue.Id, issue.Author.Login, issue.Title, "", "")
+	if err != nil {
+		if sqlerr, ok := err.(sqlite3.Error); ok && sqlerr.ExtendedCode == 1555 {
+			log.Printf("Skipping over %s, already exists...\n", issue.Id)
+		} else {
+			return err
+		}
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func fetchAllGroups(sb *backend.SQLBackend) error {
 	src := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: os.Getenv("GITHUB_TOKEN")})
 	client := githubv4.NewClient(oauth2.NewClient(context.Background(), src))
@@ -67,7 +127,7 @@ func fetchAllGroups(sb *backend.SQLBackend) error {
 			Login        string
 			CreatedAt    time.Time
 			Repositories struct {
-				Nodes    []repository
+				Nodes    []Repository
 				PageInfo struct {
 					EndCursor   githubv4.String
 					HasNextPage bool
@@ -78,7 +138,7 @@ func fetchAllGroups(sb *backend.SQLBackend) error {
 	variables := map[string]interface{}{
 		"commentsCursor": (*githubv4.String)(nil),
 	}
-	var allRepos []repository
+	var allRepos []Repository
 	for {
 		err := client.Query(context.Background(), &q, variables)
 		if err != nil {
@@ -110,12 +170,26 @@ func fetchRepo(sb *backend.SQLBackend, repoName string) error {
 
 	var q struct {
 		Repository struct {
-			Id string
+			Id     string
+			Issues struct {
+				Nodes    []Issue
+				PageInfo struct {
+					EndCursor   githubv4.String
+					HasNextPage bool
+				}
+			} `graphql:"issues(first:100, after:$issuesCursor)"`
+			PullRequests struct {
+				Nodes    []PullRequest
+				PageInfo PageInfo
+			} `graphql:"pullRequests(first:100, after:$pullRequestsCursor)"`
 		} `graphql:"repository(owner:$owner, name:$name)"`
 	}
 	variables := map[string]interface{}{
-		"owner": owner,
-		"name":  name,
+		"owner":                     githubv4.String(owner),
+		"name":                      githubv4.String(name),
+		"issuesCursor":              (*githubv4.String)(nil),
+		"pullRequestsCursor":        (*githubv4.String)(nil),
+		"pullRequestCommentsCursor": (*githubv4.String)(nil),
 	}
 
 	for {
@@ -124,7 +198,25 @@ func fetchRepo(sb *backend.SQLBackend, repoName string) error {
 			fmt.Println("Errorrr: ", err)
 			return err
 		}
+
 		fmt.Println("Repo:", q.Repository.Id)
+		var allIssues []Issue
+		var allPRs []PullRequest
+		for _, issue := range q.Repository.Issues.Nodes {
+			fmt.Printf("Issue(%s): %s\n", issue.Author.Login, issue.Title)
+			if err = addIssueArticle(sb, issue); err != nil {
+				log.Fatal(err)
+				return err
+			}
+		}
+		allIssues = append(allIssues, q.Repository.Issues.Nodes...)
+		for _, pullRequest := range q.Repository.PullRequests.Nodes {
+			fmt.Printf("PR(%s): %s\n", pullRequest.Author.Login, pullRequest.Title)
+			for _, pullRequestComment := range pullRequest.Comments.Nodes {
+				fmt.Printf("\tComment(%s): %s\n", pullRequestComment.Author.Login, pullRequestComment.BodyText)
+			}
+		}
+		allPRs = append(allPRs, q.Repository.PullRequests.Nodes...)
 
 		break
 	}
