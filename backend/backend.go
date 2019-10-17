@@ -7,6 +7,7 @@ import (
 	"net/textproto"
 	"strings"
 	"sync"
+	"time"
 
 	nntp "github.com/dustin/go-nntp"
 	"github.com/dustin/go-nntp/server"
@@ -36,37 +37,46 @@ func (sb *SQLBackend) GetArticle(group *nntp.Group, id string) (*nntp.Article, e
 
 func (sb *SQLBackend) GetArticles(group *nntp.Group, from, to int64) ([]nntpserver.NumberedArticle, error) {
 	rv := make([]nntpserver.NumberedArticle, 0, 0)
-	rows, err := sb.DB.Query("SELECT id, messageid, subject, author, date, refs FROM articles")
+	rows, err := sb.DB.Query(fmt.Sprintf(`
+SELECT messageid, subject, author, date, refs
+FROM articles a JOIN newsgroups g ON a.newsgroup = g.id
+WHERE g.name = "%s"`,
+		group.Name))
 	defer rows.Close()
 
 	if err != nil {
 		log.Fatalf("Error listing articles: %v", err)
 	}
+	id := int64(1)
 	for rows.Next() {
 		var messageid, subject, author, refs string
-		var id, date int64
-		if err := rows.Scan(&id, &messageid, &author, &date, &refs); err != nil {
+		var date int64
+		if err := rows.Scan(&messageid, &subject, &author, &date, &refs); err != nil {
 			log.Fatal(err)
 		}
-		headers := new(textproto.MIMEHeader)
-		headers.Add("Message-Id", messageid)
+		headers := make(textproto.MIMEHeader)
+		headers.Add("Message-Id", fmt.Sprintf("<%s>", messageid))
+		headers.Add("Date", time.Unix(date, 0).Format(time.RFC850))
 		headers.Add("From", author)
 		headers.Add("Subject", subject)
+		headers.Add("Newsgroups", group.Name)
 		rv = append(rv, nntpserver.NumberedArticle{
 			Num: id,
 			Article: &nntp.Article{
-				Header: *headers,
-				Body:   strings.NewReader(""),
-				Bytes:  0,
-				Lines:  0,
+				Header: headers,
+				Body:   strings.NewReader("Hello world\n"),
+				Bytes:  12,
+				Lines:  1,
 			},
 		})
+		id += 1
+		fmt.Printf("HERE %d\n", id)
 	}
 	return rv, nil
 }
 
 func (sb *SQLBackend) GetGroup(name string) (*nntp.Group, error) {
-	row := sb.DB.QueryRow("SELECT name, type FROM groups WHERE name=\"" + name + "\"")
+	row := sb.DB.QueryRow("SELECT name, type FROM newsgroups WHERE name=\"" + name + "\"")
 	var _type string
 	if err := row.Scan(&name, &_type); err != nil {
 		log.Fatal(err)
@@ -83,10 +93,10 @@ func (sb *SQLBackend) GetGroup(name string) (*nntp.Group, error) {
 
 func (sb *SQLBackend) ListGroups(max int) ([]*nntp.Group, error) {
 	rv := make([]*nntp.Group, 0, 0)
-	rows, err := sb.DB.Query("SELECT name, type FROM groups")
+	rows, err := sb.DB.Query("SELECT name, type FROM newsgroups")
 	defer rows.Close()
 	if err != nil {
-		log.Fatalf("Error listing groups: %v", err)
+		log.Fatalf("Error listing newsgroups: %v", err)
 	}
 	for rows.Next() {
 		var name string

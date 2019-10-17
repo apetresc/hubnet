@@ -7,7 +7,7 @@ import (
 )
 
 const createGroupsQuery = `
-  CREATE TABLE IF NOT EXISTS groups (
+  CREATE TABLE IF NOT EXISTS newsgroups (
 		id text not null,
 		name text,
 		type text,
@@ -18,20 +18,22 @@ const createGroupsQuery = `
 
 const createArticlesQuery = `
   CREATE TABLE IF NOT EXISTS articles (
-		id integer not null,
 		messageid text,
 		subject text,
+		body text,
 		author text,
 		date integer,
 		refs text,
-		primary key (id)
+		newsgroup text not null,
+		foreign key (newsgroup) references newsgroups(id),
+		primary key (messageid)
   );
 `
 
 func EnsureViews(db *sql.DB) error {
 	_, errg := db.Exec(createGroupsQuery)
 	if errg != nil {
-		log.Printf("Error creating groups view: %v\n", errg)
+		log.Printf("Error creating newsgroups view: %v\n", errg)
 		return errors.New("Error creating views")
 	}
 	_, errg = db.Exec(createArticlesQuery)

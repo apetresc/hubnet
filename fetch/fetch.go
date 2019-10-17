@@ -32,10 +32,11 @@ type Author struct {
 }
 
 type Issue struct {
-	Id       string
-	Author   Author
-	Title    string
-	BodyText string
+	Id        string
+	Author    Author
+	CreatedAt time.Time
+	Title     string
+	BodyText  string
 }
 
 type PullRequest struct {
@@ -62,7 +63,7 @@ func addRepository(sb *backend.SQLBackend, repo Repository) error {
 	if err != nil {
 		return err
 	}
-	stmt, err := tx.Prepare("INSERT INTO groups(id, type, name) VALUES(?, ?, ?)")
+	stmt, err := tx.Prepare("INSERT INTO newsgroups(id, type, name) VALUES(?, ?, ?)")
 	if err != nil {
 		return err
 	}
@@ -90,18 +91,18 @@ func addRepository(sb *backend.SQLBackend, repo Repository) error {
 	return nil
 }
 
-func addIssueArticle(sb *backend.SQLBackend, issue Issue) error {
+func addIssueArticle(sb *backend.SQLBackend, issue Issue, repository string) error {
 	tx, err := sb.DB.Begin()
 	if err != nil {
 		return err
 	}
-	stmt, err := tx.Prepare("INSERT INTO articles(messageid, author, subject, date, refs) VALUES(?, ?, ?, ?, ?)")
+	stmt, err := tx.Prepare("INSERT INTO articles(messageid, author, subject, body, date, refs, newsgroup) VALUES(?, ?, ?, ?, ?, ?, ?) ON CONFLICT(messageid) DO UPDATE SET body=excluded.body")
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	_, err = stmt.Exec(issue.Id, issue.Author.Login, issue.Title, "", "")
+	_, err = stmt.Exec(issue.Id, issue.Author.Login, issue.Title, issue.BodyText, issue.CreatedAt.Unix(), "", repository)
 	if err != nil {
 		if sqlerr, ok := err.(sqlite3.Error); ok && sqlerr.ExtendedCode == 1555 {
 			log.Printf("Skipping over %s, already exists...\n", issue.Id)
@@ -204,7 +205,7 @@ func fetchRepo(sb *backend.SQLBackend, repoName string) error {
 		var allPRs []PullRequest
 		for _, issue := range q.Repository.Issues.Nodes {
 			fmt.Printf("Issue(%s): %s\n", issue.Author.Login, issue.Title)
-			if err = addIssueArticle(sb, issue); err != nil {
+			if err = addIssueArticle(sb, issue, q.Repository.Id); err != nil {
 				log.Fatal(err)
 				return err
 			}
