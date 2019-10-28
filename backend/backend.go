@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/textproto"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -32,13 +33,23 @@ func (sb *SQLBackend) Authorized() bool {
 }
 
 func (sb *SQLBackend) GetArticle(group *nntp.Group, id string) (*nntp.Article, error) {
-	return nil, nil
+	fmt.Printf("HERE IS YOUR ARTICLE SIIRRRRRR: %s\n", id)
+	var numberedArticles []nntpserver.NumberedArticle
+	var i int
+	var err error
+	if numberedArticles, err = sb.GetArticles(group, 0, 1000); err != nil {
+		log.Fatal(err)
+	} else {
+		i, _ = strconv.Atoi(id)
+	}
+
+	return numberedArticles[i-1].Article, nil
 }
 
 func (sb *SQLBackend) GetArticles(group *nntp.Group, from, to int64) ([]nntpserver.NumberedArticle, error) {
 	rv := make([]nntpserver.NumberedArticle, 0, 0)
 	rows, err := sb.DB.Query(fmt.Sprintf(`
-SELECT messageid, subject, author, date, refs
+SELECT messageid, subject, body, author, date, refs
 FROM articles a JOIN newsgroups g ON a.newsgroup = g.id
 WHERE g.name = "%s"`,
 		group.Name))
@@ -49,9 +60,9 @@ WHERE g.name = "%s"`,
 	}
 	id := int64(1)
 	for rows.Next() {
-		var messageid, subject, author, refs string
+		var messageid, subject, body, author, refs string
 		var date int64
-		if err := rows.Scan(&messageid, &subject, &author, &date, &refs); err != nil {
+		if err := rows.Scan(&messageid, &subject, &body, &author, &date, &refs); err != nil {
 			log.Fatal(err)
 		}
 		headers := make(textproto.MIMEHeader)
@@ -64,9 +75,9 @@ WHERE g.name = "%s"`,
 			Num: id,
 			Article: &nntp.Article{
 				Header: headers,
-				Body:   strings.NewReader("Hello world\n"),
-				Bytes:  12,
-				Lines:  1,
+				Body:   strings.NewReader(body),
+				Bytes:  len(body),
+				Lines:  strings.Count(body, "\n") + 1,
 			},
 		})
 		id += 1
