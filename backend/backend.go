@@ -33,7 +33,6 @@ func (sb *SQLBackend) Authorized() bool {
 }
 
 func (sb *SQLBackend) GetArticle(group *nntp.Group, id string) (*nntp.Article, error) {
-	fmt.Printf("HERE IS YOUR ARTICLE SIIRRRRRR: %s\n", id)
 	var numberedArticles []nntpserver.NumberedArticle
 	var i int
 	var err error
@@ -47,6 +46,10 @@ func (sb *SQLBackend) GetArticle(group *nntp.Group, id string) (*nntp.Article, e
 }
 
 func (sb *SQLBackend) GetArticles(group *nntp.Group, from, to int64) ([]nntpserver.NumberedArticle, error) {
+	// First let's do a fetch
+	var repoName = strings.Join(strings.Split(group.Name, ".")[2:], "/")
+	fetchRepo(sb, repoName)
+
 	rv := make([]nntpserver.NumberedArticle, 0, 0)
 	rows, err := sb.DB.Query(fmt.Sprintf(`
 SELECT messageid, subject, body, author, date, refs
@@ -103,6 +106,9 @@ func (sb *SQLBackend) GetGroup(name string) (*nntp.Group, error) {
 }
 
 func (sb *SQLBackend) ListGroups(max int) ([]*nntp.Group, error) {
+	// First we fetch
+	fetchAllGroups(sb)
+
 	rv := make([]*nntp.Group, 0, 0)
 	rows, err := sb.DB.Query("SELECT name, type FROM newsgroups")
 	defer rows.Close()

@@ -1,4 +1,4 @@
-package main
+package backend
 
 import (
 	"context"
@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/apetresc/hubnet/backend"
 	"github.com/mattn/go-sqlite3"
 	"github.com/shurcooL/githubv4"
 	"golang.org/x/oauth2"
@@ -55,7 +54,7 @@ type Comment struct {
 	Author   Author
 }
 
-func addRepository(sb *backend.SQLBackend, repo Repository) error {
+func addRepository(sb *SQLBackend, repo Repository) error {
 	strs := strings.SplitN(repo.NameWithOwner, "/", 2)
 	owner := strs[0]
 	name := strs[1]
@@ -91,7 +90,7 @@ func addRepository(sb *backend.SQLBackend, repo Repository) error {
 	return nil
 }
 
-func addIssueArticle(sb *backend.SQLBackend, issue Issue, repository string) error {
+func addIssueArticle(sb *SQLBackend, issue Issue, repository string) error {
 	tx, err := sb.DB.Begin()
 	if err != nil {
 		return err
@@ -119,7 +118,7 @@ func addIssueArticle(sb *backend.SQLBackend, issue Issue, repository string) err
 	return nil
 }
 
-func fetchAllGroups(sb *backend.SQLBackend) error {
+func fetchAllGroups(sb *SQLBackend) error {
 	src := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: os.Getenv("GITHUB_TOKEN")})
 	client := githubv4.NewClient(oauth2.NewClient(context.Background(), src))
 
@@ -162,7 +161,7 @@ func fetchAllGroups(sb *backend.SQLBackend) error {
 	return nil
 }
 
-func fetchRepo(sb *backend.SQLBackend, repoName string) error {
+func fetchRepo(sb *SQLBackend, repoName string) error {
 	var strs = strings.SplitN(repoName, "/", 2)
 	var owner = strs[0]
 	var name = strs[1]
@@ -225,7 +224,7 @@ func fetchRepo(sb *backend.SQLBackend, repoName string) error {
 	return nil
 }
 
-func main() {
+func oldmain() {
 	var repo = flag.String("repo", "", "repo to fetch")
 	flag.Parse()
 
@@ -235,8 +234,8 @@ func main() {
 	}
 	defer db.Close()
 
-	backend.EnsureViews(db)
-	backend := backend.SQLBackend{
+	EnsureViews(db)
+	backend := SQLBackend{
 		DB: db,
 	}
 
