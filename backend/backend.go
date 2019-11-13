@@ -36,7 +36,7 @@ func (sb *SQLBackend) GetArticle(group *nntp.Group, id string) (*nntp.Article, e
 	var numberedArticles []nntpserver.NumberedArticle
 	var i int
 	var err error
-	if numberedArticles, err = sb.GetArticles(group, 0, 1000); err != nil {
+	if numberedArticles, err = sb.GetStoredArticles(group, 0, 1000); err != nil {
 		log.Fatal(err)
 	} else {
 		i, _ = strconv.Atoi(id)
@@ -45,11 +45,7 @@ func (sb *SQLBackend) GetArticle(group *nntp.Group, id string) (*nntp.Article, e
 	return numberedArticles[i-1].Article, nil
 }
 
-func (sb *SQLBackend) GetArticles(group *nntp.Group, from, to int64) ([]nntpserver.NumberedArticle, error) {
-	// First let's do a fetch
-	var repoName = strings.Join(strings.Split(group.Name, ".")[2:], "/")
-	fetchRepo(sb, repoName)
-
+func (sb *SQLBackend) GetStoredArticles(group *nntp.Group, from, to int64) ([]nntpserver.NumberedArticle, error) {
 	rv := make([]nntpserver.NumberedArticle, 0, 0)
 	rows, err := sb.DB.Query(fmt.Sprintf(`
 SELECT messageid, subject, body, author, date, refs
@@ -84,9 +80,19 @@ WHERE g.name = "%s"`,
 			},
 		})
 		id += 1
-		fmt.Printf("HERE %d\n", id)
+		if id > to {
+			break
+		}
 	}
 	return rv, nil
+}
+
+func (sb *SQLBackend) GetArticles(group *nntp.Group, from, to int64) ([]nntpserver.NumberedArticle, error) {
+	// First let's do a fetch
+	var repoName = strings.Join(strings.Split(group.Name, ".")[2:], "/")
+	fetchRepo(sb, repoName)
+
+	return sb.GetStoredArticles(group, from, to)
 }
 
 func (sb *SQLBackend) GetGroup(name string) (*nntp.Group, error) {
