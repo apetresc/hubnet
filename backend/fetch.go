@@ -133,12 +133,19 @@ func fetchAllGroups(sb *SQLBackend) error {
 					HasNextPage bool
 				}
 			} `graphql:"repositories(first:100, after:$reposCursor)"`
+			StarredRepositories struct {
+				Nodes    []Repository
+				PageInfo struct {
+					EndCursor   githubv4.String
+					HasNextPage bool
+				}
+			} `graphql:"starredRepositories(first:100, after:$starredCursor)"`
 		}
 	}
 	variables := map[string]interface{}{
-		"reposCursor": (*githubv4.String)(nil),
+		"reposCursor":   (*githubv4.String)(nil),
+		"starredCursor": (*githubv4.String)(nil),
 	}
-	var allRepos []Repository
 	for {
 		err := client.Query(context.Background(), &q, variables)
 		if err != nil {
@@ -150,13 +157,24 @@ func fetchAllGroups(sb *SQLBackend) error {
 			fmt.Println("        Issues:", repo.HasIssuesEnabled)
 			addRepository(sb, repo)
 		}
-		allRepos = append(allRepos, q.Viewer.Repositories.Nodes...)
-		if !q.Viewer.Repositories.PageInfo.HasNextPage {
+		for _, repo := range q.Viewer.StarredRepositories.Nodes {
+			fmt.Println("        Repo:", repo.NameWithOwner)
+			fmt.Println("        Issues:", repo.HasIssuesEnabled)
+			addRepository(sb, repo)
+		}
+		if !q.Viewer.Repositories.PageInfo.HasNextPage &&
+			!q.Viewer.StarredRepositories.PageInfo.HasNextPage {
 			break
 		}
-		variables["reposCursor"] = githubv4.NewString(q.Viewer.Repositories.PageInfo.EndCursor)
+		if q.Viewer.Repositories.PageInfo.HasNextPage {
+			variables["reposCursor"] = githubv4.NewString(
+				q.Viewer.Repositories.PageInfo.EndCursor)
+		}
+		if q.Viewer.StarredRepositories.PageInfo.HasNextPage {
+			variables["starredCursor"] = githubv4.NewString(
+				q.Viewer.StarredRepositories.PageInfo.EndCursor)
+		}
 	}
-	fmt.Println("Total # of repos:", len(allRepos))
 
 	return nil
 }
