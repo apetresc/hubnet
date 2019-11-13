@@ -132,11 +132,11 @@ func fetchAllGroups(sb *SQLBackend) error {
 					EndCursor   githubv4.String
 					HasNextPage bool
 				}
-			} `graphql:"repositories(first:100, after:$commentsCursor)"`
+			} `graphql:"repositories(first:100, after:$reposCursor)"`
 		}
 	}
 	variables := map[string]interface{}{
-		"commentsCursor": (*githubv4.String)(nil),
+		"reposCursor": (*githubv4.String)(nil),
 	}
 	var allRepos []Repository
 	for {
@@ -154,7 +154,7 @@ func fetchAllGroups(sb *SQLBackend) error {
 		if !q.Viewer.Repositories.PageInfo.HasNextPage {
 			break
 		}
-		variables["commentsCursor"] = githubv4.NewString(q.Viewer.Repositories.PageInfo.EndCursor)
+		variables["reposCursor"] = githubv4.NewString(q.Viewer.Repositories.PageInfo.EndCursor)
 	}
 	fmt.Println("Total # of repos:", len(allRepos))
 
