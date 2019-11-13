@@ -36,7 +36,7 @@ func (sb *SQLBackend) GetArticle(group *nntp.Group, id string) (*nntp.Article, e
 	var numberedArticles []nntpserver.NumberedArticle
 	var i int
 	var err error
-	if numberedArticles, err = sb.GetStoredArticles(group, 0, 1000); err != nil {
+	if numberedArticles, err = sb.GetStoredArticles(group, 0, 9999); err != nil {
 		log.Fatal(err)
 	} else {
 		i, _ = strconv.Atoi(id)
@@ -101,14 +101,30 @@ func (sb *SQLBackend) GetGroup(name string) (*nntp.Group, error) {
 	if err := row.Scan(&name, &_type); err != nil {
 		log.Fatal(err)
 	}
-	return &nntp.Group{
+
+	var group = &nntp.Group{
 		Name:        name,
 		Description: fmt.Sprintf("%ss for the Github repository at ", _type),
 		Count:       0,
 		Low:         0,
 		High:        0,
 		Posting:     nntp.PostingNotPermitted,
-	}, nil
+	}
+
+	var articles, err = sb.GetStoredArticles(group, 0, 9999)
+	if err != nil {
+		return nil, err
+	}
+	if len(articles) > 0 {
+		group.Low = articles[0].Num
+		group.Count = int64(len(articles))
+		group.High = articles[len(articles)-1].Num
+	}
+
+	fmt.Println("RETURNING GROUP:", group)
+
+	return group, nil
+
 }
 
 func (sb *SQLBackend) ListGroups(max int) ([]*nntp.Group, error) {
