@@ -39,10 +39,11 @@ type Issue struct {
 }
 
 type PullRequest struct {
-	Id     string
-	Author Author
-	Title  string
-	Body   string
+	Id        string
+	Author    Author
+	CreatedAt time.Time
+	Title     string
+	Body      string
 	/*
 		Comments struct {
 			Nodes    []Comment
@@ -70,7 +71,7 @@ func addRepository(sb *SQLBackend, repo Repository) error {
 	}
 	defer stmt.Close()
 
-	for _, groupType := range [2]string{"prs", "issues"} {
+	for _, groupType := range [2]string{"pr", "issue"} {
 		_, err = stmt.Exec(
 			repo.Id,
 			groupType,
@@ -97,13 +98,13 @@ func addIssueArticle(sb *SQLBackend, issue Issue, repository string) error {
 	if err != nil {
 		return err
 	}
-	stmt, err := tx.Prepare("INSERT INTO articles(messageid, author, subject, body, date, refs, newsgroup) VALUES(?, ?, ?, ?, ?, ?, ?) ON CONFLICT(messageid) DO UPDATE SET body=excluded.body")
+	stmt, err := tx.Prepare("INSERT INTO articles(messageid, author, subject, body, date, refs, newsgroup, type) VALUES(?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(messageid) DO UPDATE SET body=excluded.body")
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	_, err = stmt.Exec(issue.Id, issue.Author.Login, issue.Title, issue.Body, issue.CreatedAt.Unix(), "", repository)
+	_, err = stmt.Exec(issue.Id, issue.Author.Login, issue.Title, issue.Body, issue.CreatedAt.Unix(), "", repository, "issue")
 	if err != nil {
 		if sqlerr, ok := err.(sqlite3.Error); ok && sqlerr.ExtendedCode == 1555 {
 			log.Printf("Skipping over %s, already exists...\n", issue.Id)
@@ -125,13 +126,25 @@ func addPRArticle(sb *SQLBackend, pr PullRequest, repository string) error {
 	if err != nil {
 		return err
 	}
-	stmt, err := tx.Prepare("INSERT INTO articles(messageid, author, subject, body, date, refs, newsgroup) VALUES(?, ?, ?, ?, ?, ?, ?) ON CONFLICT(messageid) DO UPDATE SET body=excluded.body")
+	stmt, err := tx.Prepare("INSERT INTO articles(messageid, author, subject, body, date, refs, newsgroup, type) VALUES(?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(messageid) DO UPDATE SET body=excluded.body")
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	// TODO: Implement PRs
+	_, err = stmt.Exec(pr.Id, pr.Author.Login, pr.Title, pr.Body, pr.CreatedAt.Unix(), "", repository, "pr")
+	if err != nil {
+		if sqlerr, ok := err.(sqlite3.Error); ok && sqlerr.ExtendedCode == 1555 {
+			log.Printf("Skipping over %s, already exists...\n", pr.Id)
+		} else {
+			return err
+		}
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -234,6 +247,10 @@ func fetchRepo(sb *SQLBackend, repoName string) error {
 		}
 		for _, pullRequest := range q.Repository.PullRequests.Nodes {
 			fmt.Printf("PR(%s): %s\n", pullRequest.Author.Login, pullRequest.Title)
+			if err = addPRArticle(sb, pullRequest, q.Repository.Id); err != nil {
+				log.Fatal(err)
+				return err
+			}
 			/*
 				for _, pullRequestComment := range pullRequest.Comments.Nodes {
 					fmt.Printf("\tComment(%s): %s\n", pullRequestComment.Author.Login, pullRequestComment.Body)

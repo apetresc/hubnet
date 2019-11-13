@@ -25,7 +25,8 @@ const createArticlesQuery = `
 		date integer,
 		refs text,
 		newsgroup text not null,
-		foreign key (newsgroup) references newsgroups(id),
+		type text not null,
+		foreign key (newsgroup, type) references newsgroups(id, type),
 		primary key (messageid)
   );
 `

@@ -49,7 +49,7 @@ func (sb *SQLBackend) GetStoredArticles(group *nntp.Group, from, to int64) ([]nn
 	rv := make([]nntpserver.NumberedArticle, 0, 0)
 	rows, err := sb.DB.Query(fmt.Sprintf(`
 SELECT messageid, subject, body, author, date, refs
-FROM articles a JOIN newsgroups g ON a.newsgroup = g.id
+FROM articles a JOIN newsgroups g ON a.newsgroup = g.id AND a.type = g.type
 WHERE g.name = "%s"`,
 		group.Name))
 	defer rows.Close()
