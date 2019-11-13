@@ -35,23 +35,25 @@ type Issue struct {
 	Author    Author
 	CreatedAt time.Time
 	Title     string
-	BodyText  string
+	Body      string
 }
 
 type PullRequest struct {
-	Id       string
-	Author   Author
-	Title    string
-	BodyText string
-	Comments struct {
-		Nodes    []Comment
-		PageInfo PageInfo
-	} `graphql:"comments(first:100, after:$pullRequestCommentsCursor)"`
+	Id     string
+	Author Author
+	Title  string
+	Body   string
+	/*
+		Comments struct {
+			Nodes    []Comment
+			PageInfo PageInfo
+		} `graphql:"comments(first:100, after:$pullRequestCommentsCursor)"`
+	*/
 }
 
 type Comment struct {
-	BodyText string
-	Author   Author
+	Body   string
+	Author Author
 }
 
 func addRepository(sb *SQLBackend, repo Repository) error {
@@ -101,7 +103,7 @@ func addIssueArticle(sb *SQLBackend, issue Issue, repository string) error {
 	}
 	defer stmt.Close()
 
-	_, err = stmt.Exec(issue.Id, issue.Author.Login, issue.Title, issue.BodyText, issue.CreatedAt.Unix(), "", repository)
+	_, err = stmt.Exec(issue.Id, issue.Author.Login, issue.Title, issue.Body, issue.CreatedAt.Unix(), "", repository)
 	if err != nil {
 		if sqlerr, ok := err.(sqlite3.Error); ok && sqlerr.ExtendedCode == 1555 {
 			log.Printf("Skipping over %s, already exists...\n", issue.Id)
@@ -118,6 +120,22 @@ func addIssueArticle(sb *SQLBackend, issue Issue, repository string) error {
 	return nil
 }
 
+func addPRArticle(sb *SQLBackend, pr PullRequest, repository string) error {
+	tx, err := sb.DB.Begin()
+	if err != nil {
+		return err
+	}
+	stmt, err := tx.Prepare("INSERT INTO articles(messageid, author, subject, body, date, refs, newsgroup) VALUES(?, ?, ?, ?, ?, ?, ?) ON CONFLICT(messageid) DO UPDATE SET body=excluded.body")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	// TODO: Implement PRs
+
+	return nil
+}
+
 func fetchAllGroups(sb *SQLBackend) error {
 	src := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: os.Getenv("GITHUB_TOKEN")})
 	client := githubv4.NewClient(oauth2.NewClient(context.Background(), src))
@@ -128,17 +146,11 @@ func fetchAllGroups(sb *SQLBackend) error {
 			CreatedAt    time.Time
 			Repositories struct {
 				Nodes    []Repository
-				PageInfo struct {
-					EndCursor   githubv4.String
-					HasNextPage bool
-				}
+				PageInfo PageInfo
 			} `graphql:"repositories(first:100, after:$reposCursor)"`
 			StarredRepositories struct {
 				Nodes    []Repository
-				PageInfo struct {
-					EndCursor   githubv4.String
-					HasNextPage bool
-				}
+				PageInfo PageInfo
 			} `graphql:"starredRepositories(first:100, after:$starredCursor)"`
 		}
 	}
@@ -166,13 +178,11 @@ func fetchAllGroups(sb *SQLBackend) error {
 			!q.Viewer.StarredRepositories.PageInfo.HasNextPage {
 			break
 		}
-		if q.Viewer.Repositories.PageInfo.HasNextPage {
-			variables["reposCursor"] = githubv4.NewString(
-				q.Viewer.Repositories.PageInfo.EndCursor)
+		if len(q.Viewer.Repositories.PageInfo.EndCursor) > 0 {
+			variables["reposCursor"] = githubv4.String(q.Viewer.Repositories.PageInfo.EndCursor)
 		}
-		if q.Viewer.StarredRepositories.PageInfo.HasNextPage {
-			variables["starredCursor"] = githubv4.NewString(
-				q.Viewer.StarredRepositories.PageInfo.EndCursor)
+		if len(q.Viewer.StarredRepositories.PageInfo.EndCursor) > 0 {
+			variables["starredCursor"] = githubv4.String(q.Viewer.StarredRepositories.PageInfo.EndCursor)
 		}
 	}
 
@@ -191,10 +201,7 @@ func fetchRepo(sb *SQLBackend, repoName string) error {
 			Id     string
 			Issues struct {
 				Nodes    []Issue
-				PageInfo struct {
-					EndCursor   githubv4.String
-					HasNextPage bool
-				}
+				PageInfo PageInfo
 			} `graphql:"issues(first:100, after:$issuesCursor)"`
 			PullRequests struct {
 				Nodes    []PullRequest
@@ -203,11 +210,11 @@ func fetchRepo(sb *SQLBackend, repoName string) error {
 		} `graphql:"repository(owner:$owner, name:$name)"`
 	}
 	variables := map[string]interface{}{
-		"owner":                     githubv4.String(owner),
-		"name":                      githubv4.String(name),
-		"issuesCursor":              (*githubv4.String)(nil),
-		"pullRequestsCursor":        (*githubv4.String)(nil),
-		"pullRequestCommentsCursor": (*githubv4.String)(nil),
+		"owner":              githubv4.String(owner),
+		"name":               githubv4.String(name),
+		"issuesCursor":       (*githubv4.String)(nil),
+		"pullRequestsCursor": (*githubv4.String)(nil),
+		//"pullRequestCommentsCursor": (*githubv4.String)(nil),
 	}
 
 	for {
@@ -218,8 +225,6 @@ func fetchRepo(sb *SQLBackend, repoName string) error {
 		}
 
 		fmt.Println("Repo:", q.Repository.Id)
-		var allIssues []Issue
-		var allPRs []PullRequest
 		for _, issue := range q.Repository.Issues.Nodes {
 			fmt.Printf("Issue(%s): %s\n", issue.Author.Login, issue.Title)
 			if err = addIssueArticle(sb, issue, q.Repository.Id); err != nil {
@@ -227,16 +232,24 @@ func fetchRepo(sb *SQLBackend, repoName string) error {
 				return err
 			}
 		}
-		allIssues = append(allIssues, q.Repository.Issues.Nodes...)
 		for _, pullRequest := range q.Repository.PullRequests.Nodes {
 			fmt.Printf("PR(%s): %s\n", pullRequest.Author.Login, pullRequest.Title)
-			for _, pullRequestComment := range pullRequest.Comments.Nodes {
-				fmt.Printf("\tComment(%s): %s\n", pullRequestComment.Author.Login, pullRequestComment.BodyText)
-			}
+			/*
+				for _, pullRequestComment := range pullRequest.Comments.Nodes {
+					fmt.Printf("\tComment(%s): %s\n", pullRequestComment.Author.Login, pullRequestComment.Body)
+				}
+			*/
 		}
-		allPRs = append(allPRs, q.Repository.PullRequests.Nodes...)
 
-		break
+		if !q.Repository.Issues.PageInfo.HasNextPage && !q.Repository.PullRequests.PageInfo.HasNextPage {
+			break
+		}
+		if len(q.Repository.Issues.PageInfo.EndCursor) > 0 {
+			variables["issuesCursor"] = githubv4.String(q.Repository.Issues.PageInfo.EndCursor)
+		}
+		if len(q.Repository.PullRequests.PageInfo.EndCursor) > 0 {
+			variables["pullRequestsCursor"] = githubv4.String(q.Repository.PullRequests.PageInfo.EndCursor)
+		}
 	}
 
 	return nil
