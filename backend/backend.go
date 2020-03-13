@@ -24,7 +24,10 @@ func (sb *SQLBackend) AllowPost() bool {
 	return false
 }
 
-func (sb *SQLBackend) Authenticate(user, pass string) (nntpserver.Backend, error) {
+func (sb *SQLBackend) Authenticate(
+	user string,
+	pass string,
+) (nntpserver.Backend, error) {
 	return nil, nntpserver.ErrAuthRejected
 }
 
@@ -32,11 +35,15 @@ func (sb *SQLBackend) Authorized() bool {
 	return true
 }
 
-func (sb *SQLBackend) GetArticle(group *nntp.Group, id string) (*nntp.Article, error) {
+func (sb *SQLBackend) GetArticle(
+	group *nntp.Group,
+	id string,
+) (*nntp.Article, error) {
 	var numberedArticles []nntpserver.NumberedArticle
 	var i int
 	var err error
-	if numberedArticles, err = sb.GetStoredArticles(group, 0, 9999); err != nil {
+	if numberedArticles, err = sb.GetStoredArticles(
+		group, 0, 9999); err != nil {
 		log.Fatal(err)
 	} else {
 		i, _ = strconv.Atoi(id)
@@ -45,7 +52,11 @@ func (sb *SQLBackend) GetArticle(group *nntp.Group, id string) (*nntp.Article, e
 	return numberedArticles[i-1].Article, nil
 }
 
-func (sb *SQLBackend) GetStoredArticles(group *nntp.Group, from, to int64) ([]nntpserver.NumberedArticle, error) {
+func (sb *SQLBackend) GetStoredArticles(
+	group *nntp.Group,
+	from,
+	to int64,
+) ([]nntpserver.NumberedArticle, error) {
 	rv := make([]nntpserver.NumberedArticle, 0, 0)
 	rows, err := sb.DB.Query(fmt.Sprintf(`
 SELECT messageid, subject, body, author, date, refs
@@ -61,7 +72,8 @@ WHERE g.name = "%s"`,
 	for rows.Next() {
 		var messageid, subject, body, author, refs string
 		var date int64
-		if err := rows.Scan(&messageid, &subject, &body, &author, &date, &refs); err != nil {
+		if err := rows.Scan(
+			&messageid, &subject, &body, &author, &date, &refs); err != nil {
 			log.Fatal(err)
 		}
 		headers := make(textproto.MIMEHeader)
@@ -87,7 +99,11 @@ WHERE g.name = "%s"`,
 	return rv, nil
 }
 
-func (sb *SQLBackend) GetArticles(group *nntp.Group, from, to int64) ([]nntpserver.NumberedArticle, error) {
+func (sb *SQLBackend) GetArticles(
+	group *nntp.Group,
+	from int64,
+	to int64,
+) ([]nntpserver.NumberedArticle, error) {
 	// First let's do a fetch
 	var repoName = strings.Join(strings.Split(group.Name, ".")[2:], "/")
 	fetchRepo(sb, repoName)
@@ -96,7 +112,8 @@ func (sb *SQLBackend) GetArticles(group *nntp.Group, from, to int64) ([]nntpserv
 }
 
 func (sb *SQLBackend) GetGroup(name string) (*nntp.Group, error) {
-	row := sb.DB.QueryRow("SELECT name, type FROM newsgroups WHERE name=\"" + name + "\"")
+	row := sb.DB.QueryRow(
+		"SELECT name, type FROM newsgroups WHERE name=\"" + name + "\"")
 	var _type string
 	if err := row.Scan(&name, &_type); err != nil {
 		log.Fatal(err)
@@ -144,12 +161,13 @@ func (sb *SQLBackend) ListGroups(max int) ([]*nntp.Group, error) {
 			log.Fatal(err)
 		}
 		rv = append(rv, &nntp.Group{
-			Name:        name,
-			Description: fmt.Sprintf("%ss for the Github repository at ", _type),
-			Count:       0,
-			Low:         0,
-			High:        0,
-			Posting:     nntp.PostingNotPermitted,
+			Name: name,
+			Description: fmt.Sprintf(
+				"%ss for the Github repository at ", _type),
+			Count:   0,
+			Low:     0,
+			High:    0,
+			Posting: nntp.PostingNotPermitted,
 		})
 	}
 	return rv, nil

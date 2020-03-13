@@ -65,7 +65,8 @@ func addRepository(sb *SQLBackend, repo Repository) error {
 	if err != nil {
 		return err
 	}
-	stmt, err := tx.Prepare("INSERT INTO newsgroups(id, type, name) VALUES(?, ?, ?)")
+	stmt, err := tx.Prepare(
+		"INSERT INTO newsgroups(id, type, name) VALUES(?, ?, ?)")
 	if err != nil {
 		return err
 	}
@@ -77,8 +78,10 @@ func addRepository(sb *SQLBackend, repo Repository) error {
 			groupType,
 			fmt.Sprintf("github.%s.%s.%s", groupType, owner, name))
 		if err != nil {
-			if sqlerr, ok := err.(sqlite3.Error); ok && sqlerr.ExtendedCode == 1555 {
-				log.Printf("Skipping over %s, already exists...\n", repo.NameWithOwner)
+			if sqlerr, ok := err.(sqlite3.Error); ok &&
+				sqlerr.ExtendedCode == 1555 {
+				log.Printf("Skipping over %s, already exists...\n",
+					repo.NameWithOwner)
 			} else {
 				return err
 			}
@@ -98,15 +101,35 @@ func addIssueArticle(sb *SQLBackend, issue Issue, repository string) error {
 	if err != nil {
 		return err
 	}
-	stmt, err := tx.Prepare("INSERT INTO articles(messageid, author, subject, body, date, refs, newsgroup, type) VALUES(?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(messageid) DO UPDATE SET body=excluded.body")
+	stmt, err := tx.Prepare(`
+		INSERT INTO articles(messageid,
+							 author,
+							 subject,
+							 body,
+							 date,
+							 refs,
+							 newsgroup,
+							 type)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(messageid) DO UPDATE SET body=excluded.body`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	_, err = stmt.Exec(issue.Id, issue.Author.Login, issue.Title, issue.Body, issue.CreatedAt.Unix(), "", repository, "issue")
+	_, err = stmt.Exec(
+		issue.Id,
+		issue.Author.Login,
+		issue.Title,
+		issue.Body,
+		issue.CreatedAt.Unix(),
+		"",
+		repository,
+		"issue",
+	)
 	if err != nil {
-		if sqlerr, ok := err.(sqlite3.Error); ok && sqlerr.ExtendedCode == 1555 {
+		if sqlerr, ok := err.(sqlite3.Error); ok &&
+			sqlerr.ExtendedCode == 1555 {
 			log.Printf("Skipping over %s, already exists...\n", issue.Id)
 		} else {
 			return err
@@ -126,15 +149,35 @@ func addPRArticle(sb *SQLBackend, pr PullRequest, repository string) error {
 	if err != nil {
 		return err
 	}
-	stmt, err := tx.Prepare("INSERT INTO articles(messageid, author, subject, body, date, refs, newsgroup, type) VALUES(?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(messageid) DO UPDATE SET body=excluded.body")
+	stmt, err := tx.Prepare(`
+		INSERT INTO articles(messageid,
+		author,
+		subject,
+		body,
+		date,
+		refs,
+		newsgroup,
+		type)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(messageid) DO UPDATE SET body=excluded.body`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	_, err = stmt.Exec(pr.Id, pr.Author.Login, pr.Title, pr.Body, pr.CreatedAt.Unix(), "", repository, "pr")
+	_, err = stmt.Exec(
+		pr.Id,
+		pr.Author.Login,
+		pr.Title,
+		pr.Body,
+		pr.CreatedAt.Unix(),
+		"",
+		repository,
+		"pr",
+	)
 	if err != nil {
-		if sqlerr, ok := err.(sqlite3.Error); ok && sqlerr.ExtendedCode == 1555 {
+		if sqlerr, ok := err.(sqlite3.Error); ok &&
+			sqlerr.ExtendedCode == 1555 {
 			log.Printf("Skipping over %s, already exists...\n", pr.Id)
 		} else {
 			return err
@@ -150,7 +193,8 @@ func addPRArticle(sb *SQLBackend, pr PullRequest, repository string) error {
 }
 
 func fetchAllGroups(sb *SQLBackend) error {
-	src := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: os.Getenv("GITHUB_TOKEN")})
+	src := oauth2.StaticTokenSource(&oauth2.Token{
+		AccessToken: os.Getenv("GITHUB_TOKEN")})
 	client := githubv4.NewClient(oauth2.NewClient(context.Background(), src))
 
 	var q struct {
@@ -192,10 +236,12 @@ func fetchAllGroups(sb *SQLBackend) error {
 			break
 		}
 		if len(q.Viewer.Repositories.PageInfo.EndCursor) > 0 {
-			variables["reposCursor"] = githubv4.String(q.Viewer.Repositories.PageInfo.EndCursor)
+			variables["reposCursor"] = githubv4.String(
+				q.Viewer.Repositories.PageInfo.EndCursor)
 		}
 		if len(q.Viewer.StarredRepositories.PageInfo.EndCursor) > 0 {
-			variables["starredCursor"] = githubv4.String(q.Viewer.StarredRepositories.PageInfo.EndCursor)
+			variables["starredCursor"] = githubv4.String(
+				q.Viewer.StarredRepositories.PageInfo.EndCursor)
 		}
 	}
 
@@ -206,7 +252,8 @@ func fetchRepo(sb *SQLBackend, repoName string) error {
 	var strs = strings.SplitN(repoName, "/", 2)
 	var owner = strs[0]
 	var name = strs[1]
-	src := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: os.Getenv("GITHUB_TOKEN")})
+	src := oauth2.StaticTokenSource(&oauth2.Token{
+		AccessToken: os.Getenv("GITHUB_TOKEN")})
 	client := githubv4.NewClient(oauth2.NewClient(context.Background(), src))
 
 	var q struct {
@@ -246,29 +293,36 @@ func fetchRepo(sb *SQLBackend, repoName string) error {
 			}
 		}
 		for _, pullRequest := range q.Repository.PullRequests.Nodes {
-			fmt.Printf("PR(%s): %s\n", pullRequest.Author.Login, pullRequest.Title)
-			if err = addPRArticle(sb, pullRequest, q.Repository.Id); err != nil {
+			fmt.Printf("PR(%s): %s\n",
+				pullRequest.Author.Login, pullRequest.Title)
+			if err = addPRArticle(
+				sb,
+				pullRequest,
+				q.Repository.Id); err != nil {
 				log.Fatal(err)
 				return err
 			}
 			/*
 				for _, pullRequestComment := range pullRequest.Comments.Nodes {
-					fmt.Printf("\tComment(%s): %s\n", pullRequestComment.Author.Login, pullRequestComment.Body)
+					fmt.Printf("\tComment(%s): %s\n",
+					pullRequestComment.Author.Login, pullRequestComment.Body)
 				}
 			*/
 		}
 
-		if !q.Repository.Issues.PageInfo.HasNextPage && !q.Repository.PullRequests.PageInfo.HasNextPage {
+		if !q.Repository.Issues.PageInfo.HasNextPage &&
+			!q.Repository.PullRequests.PageInfo.HasNextPage {
 			break
 		}
 		if len(q.Repository.Issues.PageInfo.EndCursor) > 0 {
-			variables["issuesCursor"] = githubv4.String(q.Repository.Issues.PageInfo.EndCursor)
+			variables["issuesCursor"] = githubv4.String(
+				q.Repository.Issues.PageInfo.EndCursor)
 		}
 		if len(q.Repository.PullRequests.PageInfo.EndCursor) > 0 {
-			variables["pullRequestsCursor"] = githubv4.String(q.Repository.PullRequests.PageInfo.EndCursor)
+			variables["pullRequestsCursor"] = githubv4.String(
+				q.Repository.PullRequests.PageInfo.EndCursor)
 		}
 	}
-
 	return nil
 }
 
