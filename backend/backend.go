@@ -77,9 +77,11 @@ WHERE g.name = "%s"`,
 			log.Fatal(err)
 		}
 		headers := make(textproto.MIMEHeader)
-		headers.Add("Message-Id", fmt.Sprintf("<%s>", messageid))
+		headers.Add("Message-Id", fmt.Sprintf("<%s@github.com>", messageid))
 		headers.Add("Date", time.Unix(date, 0).Format(time.RFC850))
 		headers.Add("From", author)
+		headers.Add("References", fmt.Sprintf("<%s@github.com>", refs))
+		headers.Add("In-Reply-To", fmt.Sprintf("<%s@github.com>", refs))
 		headers.Add("Subject", subject)
 		headers.Add("Newsgroups", group.Name)
 		rv = append(rv, nntpserver.NumberedArticle{

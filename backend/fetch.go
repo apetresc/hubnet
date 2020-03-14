@@ -36,6 +36,10 @@ type Issue struct {
 	CreatedAt time.Time
 	Title     string
 	Body      string
+	Comments  struct {
+		Nodes    []Comment
+		PageInfo PageInfo
+	} `graphql:"comments(first:100, after:$issuesCommentsCursor)"`
 }
 
 type PullRequest struct {
@@ -44,17 +48,17 @@ type PullRequest struct {
 	CreatedAt time.Time
 	Title     string
 	Body      string
-	/*
-		Comments struct {
-			Nodes    []Comment
-			PageInfo PageInfo
-		} `graphql:"comments(first:100, after:$pullRequestCommentsCursor)"`
-	*/
+	Comments  struct {
+		Nodes    []Comment
+		PageInfo PageInfo
+	} `graphql:"comments(first:100, after:$pullRequestsCommentsCursor)"`
 }
 
 type Comment struct {
-	Body   string
-	Author Author
+	Id        string
+	Author    Author
+	CreatedAt time.Time
+	Body      string
 }
 
 func addRepository(sb *SQLBackend, repo Repository) error {
@@ -136,6 +140,27 @@ func addIssueArticle(sb *SQLBackend, issue Issue, repository string) error {
 		}
 	}
 
+	for _, issueComment := range issue.Comments.Nodes {
+		_, err = stmt.Exec(
+			issueComment.Id,
+			issueComment.Author.Login,
+			fmt.Sprintf("Re: %s", issue.Title),
+			issueComment.Body,
+			issueComment.CreatedAt.Unix(),
+			issue.Id,
+			repository,
+			"issue",
+		)
+		if err != nil {
+			if sqlerr, ok := err.(sqlite3.Error); ok &&
+				sqlerr.ExtendedCode == 1555 {
+				log.Printf("Skipping over %s, already exists...\n", issue.Id)
+			} else {
+				return err
+			}
+		}
+	}
+
 	err = tx.Commit()
 	if err != nil {
 		return err
@@ -181,6 +206,27 @@ func addPRArticle(sb *SQLBackend, pr PullRequest, repository string) error {
 			log.Printf("Skipping over %s, already exists...\n", pr.Id)
 		} else {
 			return err
+		}
+	}
+
+	for _, prComment := range pr.Comments.Nodes {
+		_, err = stmt.Exec(
+			prComment.Id,
+			prComment.Author.Login,
+			fmt.Sprintf("Re: %s", pr.Title),
+			prComment.Body,
+			prComment.CreatedAt.Unix(),
+			pr.Id,
+			repository,
+			"pr",
+		)
+		if err != nil {
+			if sqlerr, ok := err.(sqlite3.Error); ok &&
+				sqlerr.ExtendedCode == 1555 {
+				log.Printf("Skipping over %s, already exists...\n", pr.Id)
+			} else {
+				return err
+			}
 		}
 	}
 
@@ -270,11 +316,12 @@ func fetchRepo(sb *SQLBackend, repoName string) error {
 		} `graphql:"repository(owner:$owner, name:$name)"`
 	}
 	variables := map[string]interface{}{
-		"owner":              githubv4.String(owner),
-		"name":               githubv4.String(name),
-		"issuesCursor":       (*githubv4.String)(nil),
-		"pullRequestsCursor": (*githubv4.String)(nil),
-		//"pullRequestCommentsCursor": (*githubv4.String)(nil),
+		"owner":                      githubv4.String(owner),
+		"name":                       githubv4.String(name),
+		"issuesCursor":               (*githubv4.String)(nil),
+		"issuesCommentsCursor":       (*githubv4.String)(nil),
+		"pullRequestsCursor":         (*githubv4.String)(nil),
+		"pullRequestsCommentsCursor": (*githubv4.String)(nil),
 	}
 
 	for {
@@ -291,6 +338,10 @@ func fetchRepo(sb *SQLBackend, repoName string) error {
 				log.Fatal(err)
 				return err
 			}
+			for _, issueComment := range issue.Comments.Nodes {
+				fmt.Printf("\tComment(%s): %s\n",
+					issueComment.Author.Login, issueComment.Body)
+			}
 		}
 		for _, pullRequest := range q.Repository.PullRequests.Nodes {
 			fmt.Printf("PR(%s): %s\n",
@@ -302,12 +353,10 @@ func fetchRepo(sb *SQLBackend, repoName string) error {
 				log.Fatal(err)
 				return err
 			}
-			/*
-				for _, pullRequestComment := range pullRequest.Comments.Nodes {
-					fmt.Printf("\tComment(%s): %s\n",
+			for _, pullRequestComment := range pullRequest.Comments.Nodes {
+				fmt.Printf("\tComment(%s): %s\n",
 					pullRequestComment.Author.Login, pullRequestComment.Body)
-				}
-			*/
+			}
 		}
 
 		if !q.Repository.Issues.PageInfo.HasNextPage &&
