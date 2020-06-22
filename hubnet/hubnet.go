@@ -4,10 +4,13 @@ import (
 	"database/sql"
 	"log"
 	"net"
+	"os"
+	"path"
 
 	"github.com/apetresc/hubnet/backend"
 	"github.com/dustin/go-nntp/server"
 	_ "github.com/mattn/go-sqlite3"
+	gap "github.com/muesli/go-app-paths"
 )
 
 func maybefatal(err error, f string, a ...interface{}) {
@@ -18,7 +21,11 @@ func maybefatal(err error, f string, a ...interface{}) {
 
 func main() {
 	log.Printf("Starting up Hubnet...")
-	db, err := sql.Open("sqlite3", "./hubnet.db")
+	dir, err := gap.NewScope(gap.User, "hubnet").DataDirs()
+	maybefatal(err, "Error accessing data dir for hubnet")
+	err = os.MkdirAll(dir[0], os.ModeDir)
+	maybefatal(err, "Error creating data dir for hubnet")
+	db, err := sql.Open("sqlite3", path.Join(dir[0], "hubnet.db"))
 	maybefatal(err, "Error connecting to database: %s", err)
 	defer db.Close()
 
